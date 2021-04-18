@@ -1,0 +1,218 @@
+import 'dart:io';
+
+import 'package:flutter/material.dart';
+import 'package:hg/tela/model/acoes.dart';
+import 'package:intl/intl.dart';
+import 'dart:async';
+import 'package:sqflite/sqflite.dart';
+import 'package:path_provider/path_provider.dart';
+
+import 'alert/alera.dart';
+
+class Home extends StatefulWidget {
+  @override
+  _HomeState createState() => _HomeState();
+}
+
+class _HomeState extends State<Home> {
+  TimeOfDay tempoagora = TimeOfDay.now();
+  @override
+  void initState() {
+    super.initState();
+    Timer.periodic(Duration(seconds: 1), (timer) {
+      if (tempoagora.minute != TimeOfDay.now().minute) {
+        setState(() {
+          tempoagora = TimeOfDay.now();
+        });
+      }
+    });
+
+   
+  }
+
+//db
+  DatabaseHelper db = DatabaseHelper();
+  List<Acoes> acoes = List<Acoes>();
+
+  @override
+  void dispose() {
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    DateTime tempoagora2 = DateTime.now();
+    String formatado = DateFormat('kk:mm').format(tempoagora2);
+    String periodo = tempoagora.period == DayPeriod.am ? "AM" : "PM";
+    return MaterialApp(
+      home: DefaultTabController(
+        length: 2,
+        child: Scaffold(
+            backgroundColor: Colors.black,
+            floatingActionButton: FloatingActionButton(
+              onPressed: () {
+                showAlertDialog2(context);
+              },
+              child: Icon(Icons.add),
+              backgroundColor: Colors.red,
+            ),
+            body: SafeArea(
+              child: TabBarView(
+                children: <Widget>[
+                  Column(
+                    children: <Widget>[
+                      Container(
+                        padding: EdgeInsets.only(top: 100),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: <Widget>[
+                            Text(
+                              formatado,
+                              style:
+                                  TextStyle(color: Colors.white, fontSize: 60),
+                            ),
+                            SizedBox(width: 2),
+                            RotatedBox(
+                              quarterTurns: 3,
+                              child: Text(periodo,
+                                  style: TextStyle(
+                                    color: Colors.grey,
+                                  )),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Container(height: 4, width: 50, color: Colors.red),
+                    ],
+                  ),
+                  Container(),
+                  // ListView.builder(itemBuilder: null),
+                ],
+              ),
+            ),
+            bottomNavigationBar: Container(
+              height: 70,
+              child: TabBar(tabs: [
+                Tab(
+                  icon: Icon(
+                    Icons.alarm,
+                    color: Colors.grey,
+                  ),
+                ),
+                Tab(
+                  icon: Icon(
+                    Icons.alarm_add,
+                    color: Colors.grey,
+                  ),
+                ),
+              ]),
+            )),
+      ),
+    );
+  }
+}
+
+class DatabaseHelper {
+  static DatabaseHelper _databaseHelper;
+  static Database _database;
+
+//usada para definir as colunas da tabeala
+  String contatoTable = 'acoes';
+  String colId = 'id';
+  String colNome = 'nome';
+  String colEmail = 'email';
+  String colOb = 'ob';
+
+  //construtor nomeado para criar instância da classe
+  DatabaseHelper._createInstance();
+
+  factory DatabaseHelper() {
+    if (_databaseHelper == null) {
+      // executado somente uma vez
+      _databaseHelper = DatabaseHelper._createInstance();
+    }
+    return _databaseHelper;
+  }
+
+  Future<Database> get database async {
+    if (_database == null) {
+      _database = await initializeDatabase();
+    }
+    return _database;
+  }
+
+  Future<Database> initializeDatabase() async {
+    Directory directory = await getApplicationDocumentsDirectory();
+    String path = directory.path + 'acoes.db';
+
+    var contatosDatabase =
+        await openDatabase(path, version: 1, onCreate: _createDb);
+    return contatosDatabase;
+  }
+
+  void _createDb(Database db, int newVersion) async {
+    await db.execute(
+        'CREATE TABLE $contatoTable($colId INTEGER PRIMARY KEY AUTOINCREMENT, '
+        '$colNome TEXT, $colEmail TEXT, $colOb TEXT)');
+  }
+
+//Incluir um objeto contato no banco de dados
+  Future<int> insertContato(Acoes acoes) async {
+    Database db = await this.database;
+
+    var resultado = await db.insert(contatoTable, acoes.toMap());
+
+    return resultado;
+  }
+
+//retorna um contato pelo id
+  Future<Acoes> getContato(int id) async {
+    Database db = await this.database;
+
+    List<Map> maps = await db.query(contatoTable,
+        columns: [colId, colNome, colEmail, colOb],
+        where: "$colId = ?",
+        whereArgs: [id]);
+
+    if (maps.length > 0) {
+      return Acoes.fromMap(maps.first);
+    } else {
+      return null;
+    }
+  }
+
+  //Atualizar o objeto Contato e salva no banco de dados
+  Future<int> updateContato(Acoes acoes) async {
+    var db = await this.database;
+
+    var resultado = await db.update(contatoTable, acoes.toMap(),
+        where: '$colId = ?', whereArgs: [acoes.id]);
+
+    return resultado;
+  }
+
+  //Deletar um objeto Contato do banco de dados
+  Future<int> deleteContato(int id) async {
+    var db = await this.database;
+
+    int resultado =
+        await db.delete(contatoTable, where: "$colId = ?", whereArgs: [id]);
+
+    return resultado;
+  }
+
+//Obtem o número de objetos contato no banco de dados
+  Future<int> getCount() async {
+    Database db = await this.database;
+    List<Map<String, dynamic>> x =
+        await db.rawQuery('SELECT COUNT (*) from $contatoTable');
+
+    int resultado = Sqflite.firstIntValue(x);
+    return resultado;
+  }
+
+  Future close() async {
+    Database db = await this.database;
+    db.close();
+  }
+}
